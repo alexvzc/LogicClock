@@ -94,7 +94,6 @@ public class App {
 
     /**
      * Generate next delay time, using exponential distribution.
-     * @param rate The mean delay between events.
      * @return The generated delay to be observed.
      */
     private long nextWait() {
@@ -194,7 +193,6 @@ public class App {
         } // try ... catch
 
         try {
-            CharsetDecoder decoder = UTF8.newDecoder();
             channel.setReceiver(new Receiver());
 
             LOGGER.info("Connected to group" + groupName);

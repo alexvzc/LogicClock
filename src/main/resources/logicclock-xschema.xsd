@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           elementFormDefault="unqualified" attributeFormDefault="unqualified">
-    <xs:element name="packet" type="packet"/>
+           xmlns:avc="http://xml.avc.mx/school/logicclock"
+           elementFormDefault="qualified" attributeFormDefault="unqualified"
+           targetNamespace="http://xml.avc.mx/school/logicclock">
+    <xs:element name="packet" type="avc:packet"/>
     <xs:complexType name="packet">
         <xs:sequence>
             <xs:element name="payload" type="xs:normalizedString"/>

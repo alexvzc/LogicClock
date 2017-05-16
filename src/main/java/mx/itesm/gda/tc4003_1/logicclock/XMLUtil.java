@@ -7,14 +7,8 @@
 
 package mx.itesm.gda.tc4003_1.logicclock;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.InputStream;
 import java.io.StringReader;
 import java.io.StringWriter;
-import java.util.HashSet;
-import java.util.Set;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBElement;
 import javax.xml.bind.JAXBException;
@@ -34,42 +28,6 @@ public class XMLUtil {
      * {@see JAXBContext} for instance usage.
      */
     private JAXBContext jaxbCtx;
-
-    /**
-     * Retrieves all {@see ClassLoader}s bound for this class.
-     * @return a set of {@see ClassLoader}.
-     */
-    private static Set<ClassLoader> getClassLoaders() {
-        Set<ClassLoader> ret = new HashSet<ClassLoader>();
-        ret.add(Thread.currentThread().getContextClassLoader());
-        ret.add(XMLUtil.class.getClassLoader());
-        ret.add(ClassLoader.getSystemClassLoader());
-        return ret;
-
-    } // getClassLoaders()
-
-    /**
-     * Finds almost everywhere a filename is.
-     * @param filename The filename to look for,
-     * @return an open stream for retrieving the file's data.
-     * @throws FileNotFoundException in case there's no property file to look
-     * for.
-     */
-    private static InputStream ultimateFind(String filename)
-            throws FileNotFoundException {
-        for(ClassLoader cl : getClassLoaders()) {
-            InputStream in = cl.getResourceAsStream(filename);
-            if(in != null) {
-                return in;
-
-            } // if(in != null)
-
-        } // for(ClassLoader cl : getClassLoaders())
-
-        File file_in = new File(System.getProperty("user.dir"), filename);
-        return new FileInputStream(file_in);
-
-    } // ultimateFind(String filename)
 
     /**
      * Creates an instance of {@see XMLUtil}.

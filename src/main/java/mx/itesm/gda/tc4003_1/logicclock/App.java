@@ -7,26 +7,29 @@
 
 package mx.itesm.gda.tc4003_1.logicclock;
 
+import static java.lang.Runtime.getRuntime;
+import static java.lang.System.currentTimeMillis;
+import static java.lang.System.out;
+import static java.lang.Thread.currentThread;
+import static java.lang.Thread.interrupted;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
-import java.nio.charset.Charset;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CharsetEncoder;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import java.security.SecureRandom;
 import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.TimeUnit;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import javax.xml.bind.JAXBException;
 import mx.itesm.gda.tc4003_1.logicclock.binding.Packet;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.jgroups.Channel;
-import org.jgroups.ChannelException;
 import org.jgroups.JChannel;
 import org.jgroups.Message;
-import org.jgroups.ReceiverAdapter;
+import org.slf4j.Logger;
+import static org.slf4j.LoggerFactory.getLogger;
 
 /**
  * Main class
@@ -37,17 +40,12 @@ public class App {
     /**
      * Generic Logger
      */
-    private static final Log LOGGER = LogFactory.getLog(App.class);
+    private static final Logger LOGGER = getLogger(App.class);
 
     /**
      * Mean wait between packets to send.
      */
     private static final double MEAN_WAIT = 5000d; // Milliseconds
-
-    /**
-     * Default charset used
-     */
-    private static final Charset UTF8 = Charset.forName("UTF-8");
 
     /**
      * Group name to be used for {@see JChannel#connect(String)}
@@ -88,7 +86,7 @@ public class App {
         randomGenerator = new SecureRandom();
         internalClock = 0;
         keepRunning = true;
-        xmlQueue = new SynchronousQueue<CharSequence>();
+        xmlQueue = new SynchronousQueue<>();
 
     } // App(String group_name)
 
@@ -150,32 +148,24 @@ public class App {
     } // processPacket(CharSequence xml)
 
     /**
-     * Inner class to implement {@see Message} reception.
+     * Decodes an incoming {@see Message} and call the proper packet
+     * processor.
+     * @param msg the incoming message.
      */
-    private class Receiver extends ReceiverAdapter {
+    public void receive(Message msg) {
+        CharsetDecoder decoder = UTF_8.newDecoder();
 
-        /**
-         * Decodes an incoming {@see Message} and call the proper packet
-         * processor.
-         * @param msg the incoming message.
-         */
-        @Override
-        public void receive(Message msg) {
-            CharsetDecoder decoder = UTF8.newDecoder();
+        try {
+            CharBuffer buff = decoder.decode(ByteBuffer.wrap(
+                    msg.getRawBuffer(), msg.getOffset(), msg.getLength()));
+            xmlQueue.put(buff);
 
-            try {
-                CharBuffer buff = decoder.decode(ByteBuffer.wrap(
-                        msg.getRawBuffer(), msg.getOffset(), msg.getLength()));
-                xmlQueue.put(buff);
+        } catch(InterruptedException | CharacterCodingException e) {
+            LOGGER.error("Cannot receive xml", e);
 
-            } catch(Exception e) {
-                LOGGER.error("Cannot receive xml", e);
+        } // try ... catch
 
-            } // try ... catch
-
-        } // receive(Message msg)
-
-    } // class Receiver
+    } // receive(Message msg)
 
     /**
      * Executes the main loop sending {@see Message}s.
@@ -183,27 +173,29 @@ public class App {
     public void execute() {
         try {
             channel = new JChannel();
-            channel.setOpt(Channel.LOCAL, Boolean.FALSE);
+            channel.setDiscardOwnMessages(true);
             channel.connect(groupName);
 
-        } catch(ChannelException che) {
-            LOGGER.error("Cannot connect to group");
+        } catch(RuntimeException re) {
+            throw re;
+
+        } catch(Exception che) {
+            LOGGER.error("Cannot connect to group {}", groupName);
             throw new RuntimeException(che);
 
         } // try ... catch
 
         try {
-            channel.setReceiver(new Receiver());
+            channel.setReceiver(this::receive);
 
-            LOGGER.info("Connected to group" + groupName);
+            LOGGER.info("Connected to group {}", groupName);
 
             long wait = nextWait();
-            long start_time = System.currentTimeMillis();
+            long start_time = currentTimeMillis();
 
             while(keepRunning) {
                 try {
-                    CharSequence xml = xmlQueue.poll(wait,
-                            TimeUnit.MILLISECONDS);
+                    CharSequence xml = xmlQueue.poll(wait, MILLISECONDS);
 
                     if(xml != null) {
                         processPacket(xml);
@@ -211,19 +203,19 @@ public class App {
                     } // if(xml != null)
 
                 } catch(InterruptedException ie) {
-                    Thread.interrupted();
+                    interrupted();
                     continue;
 
                 } // try ... catch
 
-                long end_time = System.currentTimeMillis();
+                long end_time = currentTimeMillis();
                 wait -= (end_time - start_time);
                 start_time = end_time;
 
                 if(wait < 1) {
                     try {
                         CharSequence xml = generatePacket();
-                        CharsetEncoder encoder = UTF8.newEncoder();
+                        CharsetEncoder encoder = UTF_8.newEncoder();
                         ByteBuffer buff = encoder.encode(CharBuffer.wrap(xml));
                         Message msg = new Message();
                         msg.setBuffer(buff.array(), buff.position(),
@@ -255,25 +247,20 @@ public class App {
     public static void main(String[] args) {
         LOGGER.info("Starting up");
         if(args.length != 0) {
-            System.out.println("Usage: java -jar LogicClock.jar");
+            out.println("Usage: java -jar LogicClock.jar");
             return;
 
         } // if(args.length != 0)
 
-
         final App app = new App("lamport-cluster");
-        final Thread main_t = Thread.currentThread();
+        final Thread main_t = currentThread();
 
-        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
-
-            @Override
-            public void run() {
-                LOGGER.info("Closing operations");
-                app.keepRunning = false;
-                main_t.interrupt();
-            }
-
+        getRuntime().addShutdownHook(new Thread(() -> {
+            LOGGER.info("Closing operations");
+            app.keepRunning = false;
+            main_t.interrupt();
         }));
+
         app.execute();
 
     } // main(String[] args)
